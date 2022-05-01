@@ -1,7 +1,7 @@
 ## Welcome to My GitHub Page
 
 
-### Homework 1
+### [Homework 1](IE360_HW1.html)
 
 ### Homework 2
 
