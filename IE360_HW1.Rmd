@@ -1,0 +1,297 @@
+---
+title: "IE 360 - HW 1"
+author: "Nergiz Selin Angın"
+date: "30 04 2022"
+output: html_document
+---
+
+# Introduction & Problem Description
+
+The aim of this homework is to provide a demonstration and interpretation of selected time series data related to each other. 
+
+The total number of tourists coming to Turkey from Europe, the employment rate in Turkey and the service revenues in Turkey are taken from the Electronic Data Delivery System [EVDS](https://evds2.tcmb.gov.tr) provided by the Central Bank of the Republic of Turkey.
+
+The data on the worldwide search volume of "Holiday village Turkey" and "Turkey Antalya" is taken from Google Trends [Google Trends](http://trends.google.com/). The time period of all data is 2015.01 - 2021.12. 
+
+After visualizing the data, their correlation with each other is examined. The following questions will be answered:  
+
+1- Is the employment rate in Turkey related to the number of tourists coming to Turkey from Europe?  
+2- Are the number of tourists coming to Turkey from Europe and Turkey's service revenues related?  
+3- Is the number of tourists coming to Turkey from Europe proportional to the search volume of 'Holiday in Turkey' on Google?  
+4- Is the number of tourists coming to Turkey from Europe proportional to the search volume of 'Turkey Antalya' on Google?  
+
+
+# Required Packages and Data
+
+```{r warning=FALSE, message=FALSE}
+library(ggcorrplot)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(RColorBrewer)
+library(zoo)
+library(lubridate)
+tourists<-read_excel("/Users/selinangin/Desktop/Tourists_by_total_Europe.xlsx")
+employment_rate<-read_excel("/Users/selinangin/Desktop/Employment_rate(%).xlsx")
+services_credit<-read_excel("/Users/selinangin/Desktop/Services_Credit.xlsx")
+search_holiday<-read_excel("/Users/selinangin/Desktop/worldwidesearch_Holiday_in_Turkey.xlsx")
+search_Turkey_Antalya<-read_excel("/Users/selinangin/Desktop/worldwide_search_Turkey_Antalya.xlsx")
+```
+
+# Data Preparation
+
+```{r warning=FALSE, message=FALSE}
+tourists<-tourists[-c(85,86,87,88,89,90,91,92,93,94,95,96),]
+tourists<-tourists%>%rename(Tourists_total_Europe=`TP ODEMGZS AVRUPATOP`)%>%
+  mutate(Date=as.yearmon(Date, "%Y-%m"),Tourists_total_Europe=as.numeric(Tourists_total_Europe))
+
+employment_rate<-employment_rate[-c(85,86,87,88,89,90,91,92,93,94,95,96),]
+employment_rate<-employment_rate%>%rename(Employment_Rate=`TP YISGUCU2 G7`)%>%
+  mutate(Date=as.yearmon(Date, "%Y-%m"),Employment_Rate=as.numeric(Employment_Rate))
+
+services_credit<-services_credit[-c(85,86,87,88,89,90,91,92,93,94,95,96),]
+services_credit<-services_credit%>%rename(Services_Credit_Million_USD= `TP ODANA6 Q05`)%>%
+  mutate(Date=as.yearmon(Date, "%Y-%m"),Services_Credit_Million_USD=as.numeric(Services_Credit_Million_USD))
+
+search_holiday<-search_holiday[-c(85,86,87,88,89,90,91,92,93,94,95,96),]
+search_holiday<-search_holiday%>%rename(Date=Ay,search_holiday_inTurkey= `Holiday in Turkey: (Dünya Genelinde)`)%>%
+  mutate(Date=as.yearmon(Date, "%Y-%m"),search_holiday_inTurkey=as.numeric(search_holiday_inTurkey))
+
+search_Turkey_Antalya<-search_Turkey_Antalya[-c(85,86,87,88,89,90,91,92,93,94,95,96),]
+search_Turkey_Antalya<-search_Turkey_Antalya%>%rename(Date=Ay,search_TurkeyAntalya= `Turkey Antalya: (Dünya Genelinde)`)%>%
+  mutate(Date=as.yearmon(Date, "%Y-%m"),search_TurkeyAntalya=as.numeric(search_TurkeyAntalya))
+```
+
+# Data Visualization
+
+## 1. Tourists by Europe Analysis
+
+### 1.1 Histogram of Monthly Number of Tourists Visiting Turkey by Europe
+Number of monthly tourists visiting Turkey by Europe is plotted for 7 years as histograms below.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(tourists,aes(x=factor(month(Date)),y=Tourists_total_Europe))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())+
+  scale_fill_viridis_b()+
+  labs(x="Months",y="Number of Tourists", title="Histogram of Monthly Number of Tourists Visiting Turkey by Europe")
+```
+  
+### 1.2 Time Series Data of Monthly Number of Tourists Visiting Turkey by Europe
+The number of monthly tourists visiting Turkey by Europe is shown below as time series data for 7 years.  
+
+```{r message=FALSE, warning=FALSE}
+ggplot(tourists, aes(x=Date,y=Tourists_total_Europe))+
+  geom_line()+
+  theme_minimal()+
+  labs(x="Date", y="Number of Tourists", title = "Monthly Number of Tourists Visiting Turkey by Europe")+
+  theme(axis.text.x = element_text(angle=45,size=7))+
+  scale_x_yearmon(n=18)+
+  scale_y_continuous(breaks=seq(0,3e+06,by=1e+06))+
+  geom_point(color="coral")
+```
+  
+### 1.3 Box Plot of Number of Tourists Visiting Turkey by Europe
+Box Plot of the number of tourists visiting Turkey by Europe for 7 years is shown below.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(tourists,aes(x=factor(year(Date)), y=Tourists_total_Europe))+
+  geom_boxplot(aes(fill=factor(year(Date))))+
+  theme(legend.position = "none")+
+  labs(x="Year",y="Number of Tourists",
+       title="Monthly Number of Tourists Visiting Turkey by Europe")+
+  scale_fill_viridis_d()
+```
+  
+## 2. Employment Rate in Turkey (%) Analysis  
+
+### 2.1 Histogram of Employment Rate in Turkey (%)  
+Monthly employment rates are plotted for 7 years as histograms below. In order to examine the data more easily, the rates after 40% were taken into account.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(employment_rate,aes(x=factor(month(Date)),y=Employment_Rate-40))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())+
+  scale_y_continuous(min=30,breaks=seq(0,10,by=1))+
+  scale_fill_viridis_b()+
+  labs(x="Months",y="Employment Rate", title="Histogram of Monthly Employment Rate (%40+)")
+```
+  
+### 2.2 Time Series Data of Employment Rate in Turkey (%)
+Monthly employment rates in Turkey are shown below as time series data for 7 years.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(employment_rate, aes(x=Date,y=Employment_Rate))+
+  geom_line()+
+  theme_minimal()+
+  labs(x="Date", y="Employment Rate (%)", title = "Monthly Employment Rate")+
+  theme(axis.text.x = element_text(angle=45,size=7))+
+  scale_x_yearmon(n=12)+
+  scale_y_continuous(breaks=seq(40,50,by=1))+
+  geom_point(color="coral")
+```
+  
+### 2.3 Box Plot of Employment Rate in Turkey (%)
+Box Plot of employment rate in Turkey (%) for 7 years is shown below.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(employment_rate,aes(x=factor(year(Date)), y=Employment_Rate))+
+  geom_boxplot(aes(fill=factor(year(Date))))+
+  theme(legend.position = "none")+
+  labs(x="Year",y="Employment Rate(%)",
+       title="Employment Rate in Turkey (%)")+
+  scale_fill_viridis_d()
+```
+  
+## 3. Service Revenues Analysis
+
+### 3.1 Histogram of Service Revenues of Turkey
+Service Revenues of Turkey (Million USD Dollars) are plotted for 7 years as histograms below. 
+
+```{r warning=FALSE, message=FALSE}
+ggplot(services_credit,aes(x=factor(month(Date)),y=Services_Credit_Million_USD))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())+
+  scale_y_continuous(min=500,breaks=seq(1000,9000,by=2000))+
+  scale_fill_viridis_b()+
+  labs(x="Months",y="Services Credit (Million USD Dollars)", title="Service Revenues (Million USD Dollars)")
+```
+  
+### 3.2 Time Series Data of Service Revenues of Turkey
+Service Revenues of Turkey are shown below as time series data for 7 years.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(services_credit, aes(x=Date,y=Services_Credit_Million_USD))+
+  geom_line()+
+  theme_minimal()+
+  labs(x="Date", y="Services Credit (Million USD Dollars)", title = "Monthly Service Revenues (Million USD Dollars)")+
+  theme(axis.text.x = element_text(angle=45,size=7))+
+  scale_x_yearmon(n=12)+
+  scale_y_continuous(breaks=seq(1000,8000,by=500))+
+  geom_point(color="coral")
+``` 
+  
+### 3.3 Box Plot of Service Revenues of Turkey
+Box Plot of Service Revenues of Turkey for 7 years is shown below.
+
+```{r warning=FALSE, message=FALSE}
+ggplot(services_credit,aes(x=factor(year(Date)), y=Services_Credit_Million_USD))+
+  geom_boxplot(aes(fill=factor(year(Date))))+
+  theme(legend.position = "none")+
+  labs(x="Year",y="Services Credit (Million USD Dollars)",
+       title="Service Revenues (Million USD Dollars)")+
+  scale_fill_viridis_d()
+```
+  
+## 4. Google Trends-Worldwide Search Volume of the "Holiday village Turkey" Analysis  
+
+### 4.1 Histogram of the Search Volume of the "Holiday village Turkey"
+
+```{r message=FALSE, warning=FALSE}
+ggplot(search_holiday,aes(x=factor(month(Date)),y=search_holiday_inTurkey))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())+
+  scale_y_continuous(min=100,breaks=seq(20,120,by=20))+
+  scale_fill_viridis_b()+
+  labs(x="Months",y="Search Volume of the 'Holiday village Turkey'", title="Google Trends-Worldwide Search Volume of the 'Holiday village Turkey'")
+```
+  
+### 4.2 Time Series Data of Google Trends-Worldwide Search Volume of the "Holiday village Turkey"
+
+```{r warning=FALSE, message=FALSE}
+ggplot(search_holiday, aes(x=Date,y=search_holiday_inTurkey))+
+  geom_line()+
+  theme_minimal()+
+  labs(x="Date", y="Search Volume of the 'Holiday village Turkey'", title = "Google Trends-Worldwide Search Volume of the 'Holiday village Turkey'")+
+  theme(axis.text.x = element_text(angle=45,size=7))+
+  scale_x_yearmon(n=12)+
+  scale_y_continuous(breaks=seq(0,100,by=20))+
+  geom_point(color="coral")
+```
+  
+### 4.3 Box Plot of Google Trends-Worldwide Search Volume of the "Holiday village Turkey"
+
+```{r warning=FALSE, message=FALSE}
+ggplot(search_holiday,aes(x=factor(year(Date)), y=search_holiday_inTurkey))+
+  geom_boxplot(aes(fill=factor(year(Date))))+
+  theme(legend.position = "none")+
+  labs(x="Year",y="Search Volume of the 'Holiday village Turkey'",
+       title="Google Trends-Worldwide Search Volume of the 'Holiday village Turkey'")+
+  scale_fill_viridis_d()
+```
+  
+## 5. Google Trends-Worldwide Search Volume of the "Turkey Antalya" Analysis  
+
+### 5.1 Histogram of the Search Volume of the "Turkey Antalya"
+
+```{r message=FALSE, warning=FALSE}
+ggplot(search_Turkey_Antalya,aes(x=factor(month(Date)),y=search_TurkeyAntalya))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())+
+  scale_y_continuous(min=100,breaks=seq(20,120,by=20))+
+  scale_fill_viridis_b()+
+  labs(x="Months",y="Search Volume of the 'Turkey Antalya'", title="Google Trends-Worldwide Search Volume of the 'Turkey Antalya'")
+```
+  
+### 5.2 Time Series Data of Google Trends-Worldwide Search Volume of the "Turkey Antalya"
+
+```{r warning=FALSE, message=FALSE}
+ggplot(search_Turkey_Antalya, aes(x=Date,y=search_TurkeyAntalya))+
+  geom_line()+
+  theme_minimal()+
+  labs(x="Date", y="Search Volume of the 'Turkey Antalya'", title = "Google Trends-Worldwide Search Volume of the 'Turkey Antalya'")+
+  theme(axis.text.x = element_text(angle=45,size=7))+
+  scale_x_yearmon(n=12)+
+  scale_y_continuous(breaks=seq(50,100,by=50))+
+  geom_point(color="coral")
+```
+  
+### 5.3 Box Plot of Google Trends-Worldwide Search Volume of the "Turkey Antalya"
+
+```{r warning=FALSE, message=FALSE}
+ggplot(search_Turkey_Antalya,aes(x=factor(year(Date)), y=search_TurkeyAntalya))+
+  geom_boxplot(aes(fill=factor(year(Date))))+
+  theme(legend.position = "none")+
+  labs(x="Year",y="Search Volume of the 'Turkey Antalya'",
+       title="Google Trends-Worldwide Search Volume of the 'Turkey Antalya'")+
+  scale_fill_viridis_d()
+```
+  
+When we look at the first three data, we observe an increase in the months June, July, August and September. We can say that number of tourists coming to Turkey increases greatly in the summer. Apparently, this increase in the number of tourists affects the employment rate in Turkey and Turkey's service revenues. We observe that the employment rate in Turkey and Turkey's service revenues also increased in the summer. Besides, when we look at the Google Trends data, we see that this increase is 1-2 months earlier than the other data. This is very normal; tourists start researching about the holiday before going on vacation. Also, the decrease in each data after March 2020 shows the impact of the Covid-19 pandemic.
+  
+# Correlation Analysis
+
+```{r warning=FALSE, message=FALSE}
+corr_data<- merge(tourists,employment_rate,by='Date')
+corr_data<-merge(corr_data,services_credit,by='Date')
+corr_data<-merge(corr_data,search_holiday,by='Date')
+corr_data<-merge(corr_data,search_Turkey_Antalya,by='Date')
+corr_data<- corr_data[,-c(1,3,5,7)]
+correl_info=cor(corr_data)
+ggcorrplot(correl_info, 
+           hc.order = TRUE, 
+           type = "lower",
+           lab = TRUE)
+```
+  
+# Conclusion  
+
+After examining the histograms and correlation plot, the high positive correlation of the number of tourists coming to Turkey from Europe with Turkey's service revenues is noticeable. In addition, the positive correlation of the number of tourists with the employment rate in Turkey can not be ignored, although not as high as the service revenues. The two Google Trends data are highly correlated with each other. At the same time, their correlation with the number of tourists coming to Turkey is also high. Since the correlation of the search for 'Turkey Antalya' is higher, we see that tourists are specifically looking for the Antalya region. The decrease in all data after March 2020 indicates the negative impact of the Covid-19 pandemic on tourism in Turkey.  
+  
