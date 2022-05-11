@@ -1,0 +1,244 @@
+---
+title: "IE 360 - HW 2"
+author: "Nergiz Selin Angın"
+date: "11 05 2022"
+output: html_document
+---
+# Introduction & Problem Description
+  
+The data which is called "UGSdata" in the homework, contains quarterly gasoline and diesel sales (in 1000 m3) of a major distributor between 2000 and 2006, and a number of potential independent variables. These variables are summarized as follows:  
+UGS: Unleaded gasoline sale in a given quarter,  
+RNUV: An index indicating the rate of new unleaded gasoline using vehicles being added to the traffic in a quarter,  
+PU: Average price (adjusted with an index) of a liter of unleaded gasoline in a quarter,  
+PG: Average price (adjusted with an index) of a liter of diesel gasoline in a quarter,  
+NUGV: Number of unleaded gasoline using vehicles in the traffic,  
+NDGV: Number of diesel gasoline using vehicles in the traffic (per 1000 people),  
+GNPA: Agriculture component of Gross National Product (adjusted with an index),  
+GNPC: Commerce component of Gross National Product (adjusted with an index),  
+NLPG: Number of LPG using vehicles in the traffic,  
+GNP: Grand total for GNP (agriculture, commerce and other components total).   
+  
+The aim of this homework is to forecast the sales of UGS for every quarter of 2007 by using time series regression methods.
+
+
+# Required Packages and Data
+
+```{r warning=FALSE, message=FALSE}
+library(fpp)
+library(fpp2)
+library(ggplot2)
+library(data.table)
+library(readxl)
+library(skimr)
+library(janitor)
+library(readr)
+library(tidyverse)
+library(fBasics)
+library(dplyr)
+library(writexl)
+library(scales)
+library(plyr)
+library(zoo)
+library(lubridate)
+library(ggplot2)
+library(forecast)
+library(corrplot)
+library(ggcorrplot)
+library(xts)
+
+UGSdata<- read.csv("IE360_Spring22_HW2_data.csv")
+sapply(UGSdata, class)    
+UGSdata$Unleaded.Gasoline.Sale..UGS. <- as.numeric(gsub(" ","",UGSdata$Unleaded.Gasoline.Sale..UGS.))
+UGSdata$X..Unleaded.Gasoline.Vehicles..NUGV. <- as.numeric(gsub(" ","",UGSdata$X..Unleaded.Gasoline.Vehicles..NUGV.))
+UGSdata$X..LPG.Vehicles..NLPG. <- as.numeric(gsub(" ","",UGSdata$X..LPG.Vehicles..NLPG.))
+UGSdata$GNP.Commerce <- as.numeric(gsub(" ","",UGSdata$GNP.Commerce ))
+UGSdata$GNP.Total <- as.numeric(gsub(" ","",UGSdata$GNP.Total ))
+UGSdata$GNP.Agriculture <- as.numeric(gsub(" ","",UGSdata$GNP.Agriculture  ))
+UGSdata$Quarter <- as.yearqtr(UGSdata$Quarter, format = "%Y_Q%q")
+```
+
+### 1. Time Series Data of Unleaded Gasoline Sales (in 1000 m3) of a Major Distributor Between 2000 and 2006
+  
+```{r warning=FALSE, message=FALSE}
+time_series_UGS<- UGSdata[-c(29,30,31,32),]
+time_series_UGS<- ts(time_series_UGS$Unleaded.Gasoline.Sale..UGS.,frequency = 4,start=c(2000,1))
+ts.plot(time_series_UGS,xlab = "Year", ylab = "UGS (in 1000 m3)",main="Unleaded Gasoline Sales")
+Box.test(time_series_UGS, lag=10, type="Ljung-Box")
+
+```
+     
+When we look at the unleaded gasoline sales time series plot, we see that the data periodically peaks in about the seventh or eighth months. This means that the data contains seasonality. Besides, data has followed a decreasing trend over the years which means that the data is not stationary with respect to its mean. Also, when we do a Ljung–Box Q test (lag=10), we see that the data is not stationary. On the other hand, when the variance of the time series is analyzed, it can be observed that it does not change with time. This means that the data is stationary with respect to its variance.
+    
+```{r warning=FALSE, message=FALSE}
+decopm_data<- decompose(time_series_UGS,type="additive")
+plot(decopm_data)
+```    
+  
+The decomposition of the time series data clearly shows the trend and seasonality.
+  
+### 2. Autocorrelation Functions of the Time Series Unleaded Gasoline Sales
+
+```{r warning=FALSE, message=FALSE}
+acf(time_series_UGS, main="Autocorrelation Functions of the UGS",lag=28)
+```
+    
+When we look at the autocorrelation function of the data up to lag 28, we see that the autocorrelation in lag 1 and the autocorrelation in lag 4 are more than critical values. Autocorrelation in lag 1 shows that sales are correlated with sales in the previous quarter and the autocorrelation in lag 4 indicates quarterly seasonality. Based on these, we can conclude that we may use lag 1 and lag 4 of the sales as variables in our time series regression model. 
+  
+### 3. Seasonality, Trend and Lagged Variables
+
+```{r warning=FALSE, message=FALSE}
+UGSdata$quarters <- rep(1:4,8)
+trend_variable <- 1:32
+UGSdata$trend_variable <- trend_variable
+UGSdata$lag1_UGS <- NA
+UGSdata$lag4_UGS <- NA
+for(i in 1:28){
+ UGSdata$lag1_UGS[i+1] = UGSdata$Unleaded.Gasoline.Sale..UGS.[i]
+}
+for(i in 1:28){
+UGSdata$lag4_UGS[i+4] = UGSdata$Unleaded.Gasoline.Sale..UGS.[i]
+}
+```
+  
+Trend, seasonality, lag1 of UGS and lag4 of UGS variables are added to the data, which can then be used in the regression model.
+    
+### 4. Regression Models
+  
+#### 4.1 Correlation of the Variables
+  
+```{r warning=FALSE, message=FALSE}
+corr_data <- UGSdata[!is.na(UGSdata$Unleaded.Gasoline.Sale..UGS. & UGSdata$lag1_UGS & UGSdata$lag4_UGS),]
+corr_info = cor(corr_data[,unlist(lapply(corr_data, is.numeric))])
+ggcorrplot(corr_info,
+           hc.order = TRUE,
+           type='lower',
+           lab=TRUE)
+```
+  
+The correlation of variables with each other is important for choosing which variable to use in the model. When we examine the correlation of variables, we find that the correlation of Lag4_UGS and UGS is quite high. This is a sign that we may use lag4_UGS in our regression model. 
+    
+#### 4.2 Alternative Regression Models
+  
+```{r warning=FALSE, message=FALSE}
+tr_data<- UGSdata[-c(29,30,31,32),-1]
+tr_data$quarters<-as.character(tr_data$quarters)
+
+model1 <-lm(Unleaded.Gasoline.Sale..UGS. ~.,tr_data)
+summary(model1)
+```
+      
+Creating a regression model has started with a large model that uses all variables, and we will try to find the best model by removing the insignificant variables.  
+  
+```{r warning=FALSE, message=FALSE}
+model2 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS,tr_data)
+summary(model2) 
+```
+  
+In the previous model, lag4_UGS was the most insignificant variable, so it is removed from the model.  
+
+```{r warning=FALSE, message=FALSE}
+model3 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS-GNP.Agriculture,tr_data)
+summary(model3) 
+```
+    
+The insignificant variable "GNP.Agriculture" has been removed from model-2. We see that the adjusted R-squared increased.
+    
+```{r warning=FALSE, message=FALSE}
+model4 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS-GNP.Agriculture-Price.of.Diesel.Gasoline..PG.,tr_data)
+summary(model4) 
+```
+  
+"Price.of.Unleaded.Gasoline..PU." variable is the most insignificant variable in the model-3. However, since price of the unleaded gasoline effect should be high in sales of unleaded gasoline , we removed the "Price.of.Diesel.Gasoline..PG." variable in model-4, which has a quite high correlation with "Price.of.Unleaded.Gasoline..PU.". 
+
+```{r warning=FALSE, message=FALSE}
+model5 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS-GNP.Agriculture-Price.of.Diesel.Gasoline..PG.-GNP.Total,tr_data)
+summary(model5) 
+```
+      
+Although the p-value of the trend variable and some of the seasonality variables turn out to be too high in the model-4 (which indicates insignificance of the variables), the trend and seasonality are clearly observed in time series data. Because of this, it would be unreasonable to remove the trend and seasonality variables from the model. Model-5 was created by subtracting the variable with the highest p-value (GNP.Total) after the trend and seasonality variables from model-4. We observe that the adjusted R-squared increased.
+  
+```{r warning=FALSE, message=FALSE}
+model6 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS-GNP.Agriculture-Price.of.Diesel.Gasoline..PG.-GNP.Total-GNP.Commerce,tr_data)
+summary(model6) 
+```
+  
+Model-6 was created by subtracting the variable with the highest p-value (GNP.Commerce) after the trend and seasonality variables from model-5. We observe that the adjusted R-squared increased.
+  
+```{r warning=FALSE, message=FALSE}
+model7 <-lm(Unleaded.Gasoline.Sale..UGS. ~.-lag4_UGS-GNP.Agriculture-Price.of.Diesel.Gasoline..PG.-GNP.Total-GNP.Commerce-RNUV,tr_data)
+summary(model7) 
+```
+    
+Model-7 was created by subtracting the variable with the highest p-value (RNUV) from model-6. We observe that the adjusted R-squared slightly decreased. 
+
+
+```{r warning=FALSE, message=FALSE}
+model8 <-lm(Unleaded.Gasoline.Sale..UGS. ~ Price.of.Unleaded.Gasoline..PU.+ X..Unleaded.Gasoline.Vehicles..NUGV.+ X..of.Diesel.Gasoline.Vehicles..NDGV.+ quarters+ trend_variable+ lag1_UGS ,tr_data)
+summary(model8) 
+```
+  
+Model-8 was created by subtracting the variable with the highest p-value (X..LPG.Vehicles..NLPG.) after the trend variable from model-7. For more convenient observation of variables, model-8 was created not by removing variables, but by adding them. We observe that the adjusted R-squared increased.
+
+```{r warning=FALSE, message=FALSE}
+checkresiduals(model8)
+```
+When we look at the ACF of residuals in model-8, we see that the critical value is exceeded slightly at lag-4. 
+  
+```{r warning=FALSE, message=FALSE}
+model9 <-lm(Unleaded.Gasoline.Sale..UGS. ~Price.of.Unleaded.Gasoline..PU.+ X..Unleaded.Gasoline.Vehicles..NUGV.+ X..of.Diesel.Gasoline.Vehicles..NDGV.+ quarters+trend_variable+ lag1_UGS+lag4_UGS,tr_data)
+summary(model9) 
+```
+
+```{r warning=FALSE, message=FALSE}
+checkresiduals(model9)
+```    
+In order to remove the autocorrelation of residuals in model-8 at lag-4, "lag4_UGS" variable was added to the model-9. However, despite the fact that the autocorrelation in lag-4 is gone, we see that adjusted R-squared has fallen drastically, and the normality assumption of residuals has been destroyed. Also, the p-value of the "lag4_UGS" variable seems to be quite high which indicates that it is an insignificant variable for the model. Considering the small size of the data, we can ignore the autocorrelation of residuals in the model-8 at lag-4. That is why the model-8 is a sufficient model that can be used to predict sales in 2007.
+
+When we analyze the above models, Model-8 is the selected model for the prediction of "2007 Unleaded Gasoline Sales" because of the higher adjusted R-squared value than the others and significance of coefficients. Looking at the p-values of the variables in the model-8, it becomes clear that they are all significant. 
+
+### 5. Validity of the Selected Model
+  
+```{r warning=FALSE, message=FALSE}
+best_model<- model8
+summary(best_model)
+```
+  
+Looking at the p-values of the variables in the selected model, it becomes clear that they are all significant. Also, the R-value of the model (0.9679) is an acceptable value.
+
+```{r warning=FALSE, message=FALSE}
+checkresiduals(best_model)
+```
+  
+According to the histogram of the residuals, normal distribution with zero mean and constant variance of the residuals assumption has been satisfied. According to ACF, we see that the critical value is exceeded slightly at lag-4. However, lag4_UGS variable was added to the model-9 and seen that the SSE values and adjusted R-squared value gets worse, it is not decided to be added to the model. So, the autocorrelation of residuals in lag-4 can be ignored due to the small number of data and the sufficiency of the variables in the model to explain unleaded gasoline sales. 
+
+```{r warning=FALSE, message=FALSE}
+plot(best_model)
+```
+
+When we analyze the Normal Q-Q Plot and Residuals vs Fitted Plot, it seems that normality assumption with zero mean and constant variance of the residuals has been satisfied.
+
+### 6. 2007 Unleaded Gasoline Sales Forecast
+
+```{r warning=FALSE, message=FALSE}
+UGSdata$quarters<-as.character(UGSdata$quarters)
+test_data<- UGSdata[c(29,30,31,32),]
+prediction=NA
+for(i in 1:nrow(test_data)){
+     prediction[i] = predict(best_model,newdata=test_data[i,])
+    if(i!= 4){
+     test_data$lag1_UGS[[i+1]] = prediction[i]
+        }
+}
+prediction
+```
+  
+Predictions= {662492.3, 845565.1, 965974.6, 788131.3}
+
+### 7. Conclusion
+  
+Nine models were tried to predict unleaded gasoline sales for 2007. According to adjusted R-squared, residual analysis, significance of coefficients, residuals vs fitted plot and normal Q-Q plot of residuals, model-8 is the best model for prediction. Therefore, the predictions were made based on model-8. Predictions for unleaded gasoline sales for 2007 are {Q1=662492.3, Q2=845565.1, Q3=965974.6, Q4=788131.3}
+
+
+
+
+
